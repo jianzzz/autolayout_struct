@@ -1,0 +1,50 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+        <title>DOM AutoLayout example</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+        <meta name="viewport" content="width=device-width, maximum-scale=1, user-scalable=no" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+        <link rel="stylesheet" type="text/css" href="styles.css" />
+        <script type="text/javascript" src="../../dist/autolayout.js"></script>
+    </head>
+    <body>
+        <div hideflag="hideflag" id="left">
+            <div itemtype="menu" funcmap="text" id="text">AutoLayout.js DOM Example:</div>
+            <pre itemtype="menu" funcmap="vfl" id="vfl"></pre>
+            <div itemtype="menu" funcmap="text2" id="text2">Same example written in EVFL:</div>
+            <pre itemtype="menu" funcmap="evfl" id="evfl"></pre>
+        </div>
+        <div hideflag="hideflag" id="right">
+            <span id="c1_8">
+            <span id="c1_2">
+            <div itemtype="menu" funcmap="child1" id="c1"><div>1</div></div>
+            <div itemtype="menu" funcmap="child2" id="c2"><div>2</div></div>
+            </span>
+            <span id="c3_8">
+            <span id="c3_6">
+            <div itemtype="menu" funcmap="child3" id="c3"><div>3</div></div>
+            <div itemtype="menu" funcmap="child4" id="c4"><div>4</div></div>
+            <div itemtype="menu" funcmap="child5" id="c5"><div>5</div></div>
+            <div itemtype="menu" funcmap="child1" id="c6"><div>6</div></div>
+            </span>
+            <span id="c7_8" style="border:5px solid #DDDDDD;">
+            <div itemtype="menu" funcmap="child2" id="c7" style="border:5px solid #DDDDDD;"><div>7</div></div>
+            <div itemtype="menu" funcmap="child3" id="c8"><div>8</div></div>
+            </span>
+            </span>
+            </span>
+            <span id="c9_11">
+            <div itemtype="menu" funcmap="child4" id="c9" style="border:5px solid #DDDDDD;"><div>9</div></div>
+            <span id="c10_11">
+            <div itemtype="menu" funcmap="child5" id="c10" style="border:5px solid #DDDDDD;"><div>10</div></div>
+            <div itemtype="menu" funcmap="child5" id="c11"><div>11</div></div>
+            </span>
+            </span>
+        </div>
+        <script type="text/javascript" src="./layout_struct.js"></script>
+    </body>
+</html>
