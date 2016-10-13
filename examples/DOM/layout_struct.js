@@ -151,6 +151,7 @@ var __Arrangement = {
         此处是兄弟视图id数组，数组内的id代表该视图被忽略
     actualWidth : 实际分配给当前视图的宽度
     actualHeight : 实际分配给当前视图的高度
+    borderWidth : border四个方向的宽度
 
     //1.
     //使用递归的方法构造表达式，但是实际的有效情况是由顶层往底层布局
@@ -294,9 +295,21 @@ var __view = function(id){
     this.isLeaf = function(){
         return (this.rowsNum() == 0 && this.colsNum() == 0);
     };
+    this.checkError = function(){
+        if(this.arrangement == __Arrangement.ROW){
+            if(this.rowsSpace.length!=0&&this.rowsSpace.length!=1&&this.rowsSpace.length!=this.rowsNum()+1){
+                alert("视图:" + this.id + " 行距设置有误;");
+            }
+        }else{
+            if(this.colsSpace.length!=0&&this.colsSpace.length!=1&&this.colsSpace.length!=this.colsNum()+1){
+                alert("视图:" + this.id + " 列距设置有误;");
+            }
+        }
+    }
 
     this.EVFL = function(){
         //clear
+        __GLOBAL_id2view = [];
         __GLOBAL_index = 0;//全局下标
         __GLOBAL_stack = [];//数组下标栈
         __GLOBAL_expression = [];//其成员为 id->表达式数组
@@ -316,13 +329,11 @@ var __view = function(id){
     // width和height代表当前视图应该具备的宽度和高度
     // 这是父视图根据定义信息计算过的
     this.layout = function(width,height){
-        //存储当前视图的实际宽度和高度，包括border
+        this.checkError();
+
+        //存储当前视图的实际宽度和高度，不包括border
         this.actualWidth = width;
         this.actualHeight = height;
-
-        //减去border
-        //width -= parseFloat(borderLeftWidth)+parseFloat(borderRightWidth);
-        //height -= parseFloat(borderTopWidth)+parseFloat(borderBottomWidth);
 
         //处理id到view的映射
         __GLOBAL_id2view[this.id] = this;
@@ -332,13 +343,6 @@ var __view = function(id){
         //对叶子视图进行处理
         if(this.isLeaf()){
             var left=0,right=0,top=0,bottom=0;
-            //加上border，累积到右边和底部
-            /*
-            right+=this.borderWidth["left"];
-            right+=this.borderWidth["right"];
-            bottom+=this.borderWidth["top"];
-            bottom+=this.borderWidth["bottom"];
-            */
             if(this.colsSpace.length>0){
                 if(this.colsSpace.length==1){
                     left = right = this.getNumber(this.colsSpace[0],width);
@@ -394,13 +398,6 @@ var __view = function(id){
                     spaceArr.push(0);
                 }
             }
-/*
-            //垂直方向上算上border，累积到底部
-            spaceArr[this.rowsNum()] += this.borderWidth["top"];
-            spaceArr[this.rowsNum()] += this.borderWidth["bottom"];
-            remainHeight -= this.borderWidth["top"];
-            remainHeight -= this.borderWidth["bottom"];
-*/
 
             //这里的思想是：标记未能明确高度的行视图，如果只有一个视图确认了高度，
             //其他视图将会均分剩余的高度，以此类推
@@ -448,11 +445,6 @@ var __view = function(id){
                     right = this.getNumber(this.colsSpace[1],width);
                 }
             }
-            /*
-            //水平方向上算上border，累积到右边
-            right += this.borderWidth["left"];
-            right += this.borderWidth["right"];
-*/
 
             //遍历每个行视图，获取名字/表达式数组，将表达式数组合并
             var sum_nameArr = new Array();
@@ -462,7 +454,7 @@ var __view = function(id){
             var leafFlag = new Array();
             var ifParentHasLeaf = false;
             for (var i = 0; i < this.rowsNum(); i++) {
-                //除去left值和right值
+                //除去left值和right值、border
                 //var r = this.rows[i].layout(width-left-right,rharr[i]);
                 var r = this.rows[i].layout(
                     width-left-right-this.rows[i].borderWidth["left"]-this.rows[i].borderWidth["right"],
@@ -485,9 +477,6 @@ var __view = function(id){
                             leafSpace[i*2+1]+=this.getNumber(this.rows[i].rowsSpace[1],rharr[i]);
                         }
                     }
-                    //加上border，累积到底部
-                    //leafSpace[i*2+1]+=this.rows[i].borderWidth["top"];
-                    //leafSpace[i*2+1]+=this.rows[i].borderWidth["bottom"];
                 }else{
                     leafFlag[i] = false;
                 }
@@ -496,6 +485,10 @@ var __view = function(id){
             //构造垂直表达式，并生成新的名字，将表达式并入数组
             //叶子视图会设置行间距和列间距，为使之生效，对于叶子视图的父视图而言，
             //若当前为行排列，应在父视图的V表达式上计算间隔，H不变
+
+            //布局的时候自动计算有效的border，将其宽度累加到视图的右下方向
+            //如果父视图是行排列，在汇总的V表达式上累加上子视图的border(只累加到底部)
+            //并分别设置子视图的H表达式(原先只需要一条汇总的H式)，累加上子视图的border(只累加到右边)
             var name = __GLOBAL_GetUniqueId();
             if(!ifParentHasLeaf){//孩子视图中没有叶子视图
                 var newexp = 'V:|['+name+':-('+spaceArr[0]+')-';
@@ -525,7 +518,7 @@ var __view = function(id){
             }
 
             //水平拉伸
-            //除去left值和right值
+            //除去left值和right值、border
             for (var i = 0; i < this.rowsNum(); i++) {
                 newexp = 'H:|-('+left+')-['+sum_nameArr[i]+'('+
                     (width-left-right-this.rows[i].borderWidth["left"]-this.rows[i].borderWidth["right"])
@@ -536,14 +529,7 @@ var __view = function(id){
             }
             //newexp = 'H:|-('+left+')-['+name+'('+(width-left-right)+')]-('+right+'@10)-|'
             //sum_expressionArr.push(newexp);
-/*
-            for (var i = 0; i < this.rowsNum(); i++) {
-                newexp = 'H:|-('+borderWidthArr[i]+')-['+
-                    sum_nameArr[i]+'('+(width-borderWidthArr[i]*2)+
-                    ')]-('+borderWidthArr[i]+')-|'
-                sum_expressionArr.push(newexp);
-            }
-*/
+
             //出栈下标，将id与表达式存于数组中
             //布局，并返回 名字->空数组
             var tid = this.id;
@@ -580,13 +566,6 @@ var __view = function(id){
                     spaceArr.push(0);
                 }
             }
-/*
-            //水平方向上算上border，累积到右边
-            spaceArr[this.colsNum()] += this.borderWidth["left"];
-            spaceArr[this.colsNum()] += this.borderWidth["right"];
-            remainWidth -= this.borderWidth["left"];
-            remainWidth -= this.borderWidth["right"];
-*/
 
             //这里的思想是：标记未能明确宽度的列视图，如果只有一个视图确认了宽度，
             //其他视图将会均分剩余的宽度，以此类推
@@ -634,17 +613,12 @@ var __view = function(id){
                     bottom = this.getNumber(this.rowsSpace[1],height);
                 }
             }
-            /*
-            //垂直方向上算上border，累积到底部
-            bottom += this.borderWidth["top"];
-            bottom += this.borderWidth["bottom"];
-*/
 
             //遍历每个列视图，获取名字/表达式数组，将表达式数组合并
             var sum_nameArr = new Array();
             var sum_expressionArr = new Array();
             for (var i = 0; i < this.colsNum(); i++) {
-                //除去top和bottom
+                //除去top和bottom、border
                 //var r = this.cols[i].layout(cwarr[i],height-top-bottom);
                 var r = this.cols[i].layout(
                     cwarr[i]-this.cols[i].borderWidth["left"]-this.cols[i].borderWidth["right"],
@@ -656,6 +630,10 @@ var __view = function(id){
                 //2、叶子视图修改V表达式，当前视图的行距累加到叶子视图上
                 //这是因为如果对当前列排列使用V表达式的话，会导致叶子视图行间距不生效
                 //而直接不使用V表达式的话会导致一些子视图没有分配到高度
+
+                //布局的时候自动计算有效的border，将其宽度累加到视图的右下方向
+                //如果父视图是列排列，在汇总的H表达式上累加上子视图的border(只累加到右边)
+                //并在上述的基础上，分别设置子视图的V表达式，累加上子视图的border(只累加到底部)
                 if(r.expression.length == 0){//非叶子视图
                     //newexp = 'V:|-('+top+')-['+r.name+'('+(height-top-bottom)+')]-('+bottom+'@10)-|'
                     newexp = 'V:|-('+top+')-['+r.name+'('+
@@ -687,7 +665,7 @@ var __view = function(id){
                             */
                             //计算border
                             patt = /(V:\|-\()(.*?)(\).*\()(.*?)(\).*\()(.*?)(\).*)/;
-                            console.log(r.expression[ei].match(patt));
+                            //console.log(r.expression[ei].match(patt));
                             //默认是贪婪模式；在量词后面直接加上一个问号？就是非贪婪模式。
                             //使其匹配第一个'('
                             //match用法请查看https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/match
@@ -724,14 +702,6 @@ var __view = function(id){
             //newexp = 'V:|-('+top+')-['+name+'('+(height-top-bottom)+')]-('+bottom+'@10)-|'
             //sum_expressionArr.push(newexp);
 
-/*
-            for (var i = 0; i < this.colsNum(); i++) {
-                newexp = 'V:|-('+borderWidthArr[i]+')-['+
-                    sum_nameArr[i]+'('+(height-borderWidthArr[i]*2)+
-                    ')]-('+borderWidthArr[i]+')-|';
-                sum_expressionArr.push(newexp);
-            }
-*/
             //出栈下标，将id与表达式存于数组中
             //布局，并返回 名字->空数组
             var tid = this.id;
@@ -739,7 +709,7 @@ var __view = function(id){
                 "id":tid,
                 "expression":sum_expressionArr
             };
-            //autoLayout(document.getElementById(this.id), sum_expressionArr);
+
             ret.name = this.id;
             ret.expression = [];
             return ret;
@@ -1195,6 +1165,10 @@ __7.rowsSpace = [2];
 __10.rowsSpace = [10];
 __10.colsSpace = [10];
 __7_8.rowsSpace = [2];
+
+__7.colsSpace = [10,20];
+__10_11.rowsSpace = [10,20,10]
+__6.missAdaptIgnore = ['c5']
 /*
 __7.rowsSpace = [10];
 __7.colsSpace = [10];
@@ -1355,14 +1329,18 @@ function __deal_with_map_result__(data){
 }
 
 
-//dom元素隐藏事件，没有计算border宽度
+//dom元素隐藏事件，计算border宽度
+//当某个视图被删除时，其上方的行距或左方的列距将会消失
 function __hide_handleLayout(id){
     var view = __GLOBAL_id2view[id];
     if(view==undefined) return;
+
     var p = view.parent;
     var expandLength = 0;//待扩展的高度或宽度
     if(p.arrangement == __Arrangement.ROW){
-        expandLength += view.actualHeight;
+        //算上实际高度和border
+        //expandLength是所删除视图的高度，加上border，加上上方行距
+        expandLength += view.actualHeight + view.borderWidth['top'] + view.borderWidth['bottom'];
         if(p.rowsSpace.length == 1){
             expandLength += p.rowsSpace[0];
         }else if(p.rowsSpace.length > 1){
@@ -1374,22 +1352,24 @@ function __hide_handleLayout(id){
         p.rows = p.rows;//此步骤是为了更新index
         var rn = p.rowsNum();
         if(rn>0){
+            //proportionLength是除忽略的兄弟视图之外的所有兄弟视图的高度，加上border
+            //如果所有视图被忽略，proportionLength为0，则所有兄弟视图的高度不变
             var proportionLength = 0;
             for (var i = 0; i < rn; i++) {
                 if( view.missAdaptIgnore.length>0 &&
                     view.missAdaptIgnore.indexOf(p.rows[i].id)>=0){
                     continue;
                 }else{
-                    proportionLength += p.rows[i].actualHeight;
+                    proportionLength += p.rows[i].actualHeight + p.rows[i].borderWidth['top'] + p.rows[i].borderWidth['bottom'];
                 }
             }
             for (var i = 0; i < rn; i++) {
-                p.rows[i].height = p.rows[i].actualHeight;
+                p.rows[i].height = p.rows[i].actualHeight + p.rows[i].borderWidth['top'] + p.rows[i].borderWidth['bottom'];
                 if( view.missAdaptIgnore.length>0 &&
                     view.missAdaptIgnore.indexOf(p.rows[i].id)>=0){
                     continue;
                 }else{
-                    p.rows[i].height += (p.rows[i].actualHeight/proportionLength)*expandLength;
+                    p.rows[i].height += ((p.rows[i].actualHeight+p.rows[i].borderWidth['top']+p.rows[i].borderWidth['bottom'])/proportionLength)*expandLength;
                 }
             }
         }else{
@@ -1397,7 +1377,9 @@ function __hide_handleLayout(id){
             __hide_handleLayout(p.id);
         }
     }else{
-        expandLength += view.actualWidth;
+        //算上实际宽度和border
+        //expandLength是所删除视图的宽度，加上border，加上左方列距
+        expandLength += view.actualWidth + view.borderWidth['left'] + view.borderWidth['right'];
         if(p.colsSpace.length == 1){
             expandLength += p.colsSpace[0];
         }else if(p.colsSpace.length > 1){
@@ -1409,22 +1391,24 @@ function __hide_handleLayout(id){
         p.cols = p.cols;//此步骤是为了更新index
         var cn = p.colsNum();
         if(cn>0){
+            //proportionLength是除忽略的兄弟视图之外的所有兄弟视图的宽度，加上border
+            //如果所有视图被忽略，proportionLength为0，则所有兄弟视图的宽度不变
             var proportionLength = 0;
             for (var i = 0; i < cn; i++) {
                 if( view.missAdaptIgnore.length>0 &&
                     view.missAdaptIgnore.indexOf(p.cols[i].id)>=0){
                     continue;
                 }else{
-                    proportionLength += p.cols[i].actualWidth;
+                    proportionLength += p.cols[i].actualWidth + p.cols[i].borderWidth['left'] + p.cols[i].borderWidth['right'];
                 }
             }
             for (var i = 0; i < cn; i++) {
-                p.cols[i].width = p.cols[i].actualWidth;
+                p.cols[i].width = p.cols[i].actualWidth + p.cols[i].borderWidth['left'] + p.cols[i].borderWidth['right'];
                 if( view.missAdaptIgnore.length>0 &&
                     view.missAdaptIgnore.indexOf(p.cols[i].id)>=0){
                     continue;
                 }else{
-                    p.cols[i].width += (p.cols[i].actualWidth/proportionLength)*expandLength;
+                    p.cols[i].width += ((p.cols[i].actualWidth+p.cols[i].borderWidth['left']+p.cols[i].borderWidth['right'])/proportionLength)*expandLength;
                 }
             }
         }else{
@@ -1436,10 +1420,8 @@ function __hide_handleLayout(id){
 
 window.onload = function(){
     /*
-    $('#child1').remove();
-    __hide_handleLayout('child1');
-    $('#child2').remove();
-    __hide_handleLayout('child2');
+    $('#c6').remove();
+    __hide_handleLayout('c6');
     __clayout.EVFL();
     */
 
