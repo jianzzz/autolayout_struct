@@ -149,9 +149,15 @@ var __Arrangement = {
     arrangement : 当前视图的排列方式，行排列还是列排列
     missAdaptIgnore : 当当前视图缺失时，兄弟视图默认按比例扩充。
         此处是兄弟视图id数组，数组内的id代表该视图被忽略
+    borderWidth : border四个方向的宽度
     actualWidth : 实际分配给当前视图的宽度
     actualHeight : 实际分配给当前视图的高度
-    borderWidth : border四个方向的宽度
+    isWidthUpdated ：是否被更新了宽度，视图layout时此标志被设为false，
+        而在__hide_handleLayout()函数中如果被分配了新的宽度，此标志将被设置为true
+        为false表示视图宽度的计算为actualWidth+border，为true表示视图宽度的计算为width
+    isHeightUpdated ：是否被更新了高度，视图layout时此标志被设为false，
+        而在__hide_handleLayout()函数中如果被分配了新的高度，此标志将被设置为true
+        为false表示视图高度的计算为actualHeight+border，为true表示视图高度的计算为height
 
     //1.
     //使用递归的方法构造表达式，但是实际的有效情况是由顶层往底层布局
@@ -210,6 +216,8 @@ var __Arrangement = {
        可以通过rowsSpace来间接控制，设置rowsSpace相当于设置了视图的top和bottom值
        为使其生效，列排列的V表达式减去这部分值
 
+       如果设定了视图的高度和宽度，其将会自动减去border的宽度对子视图进行分配
+
        行间距和列间距的百分比设定是相对于父视图而言，
        宽度和高度的百分比设定是相对于父视图除去间距之后而言！！！
 
@@ -247,16 +255,16 @@ var __view = function(id){
     this.index = 0;
     this.parent = null;
     this.arrangement = __Arrangement.ROW;
-
     this.missAdaptIgnore = []; //当当前视图缺失时，兄弟视图默认按比例扩充。此处是id数组
-    this.actualWidth = 0; //实际被分配宽度
-    this.actualHeight = 0;//实际被分配高度
     this.borderWidth = [];//border四个方向的宽度
     this.borderWidth["left"] = parseFloat(getStyle(document.getElementById(this.id),"borderLeftWidth"));
     this.borderWidth["right"] = parseFloat(getStyle(document.getElementById(this.id),"borderTopWidth"));
     this.borderWidth["top"] = parseFloat(getStyle(document.getElementById(this.id),"borderRightWidth"));
     this.borderWidth["bottom"] = parseFloat(getStyle(document.getElementById(this.id),"borderBottomWidth"));
-
+    this.actualWidth = 0; //实际被分配宽度
+    this.actualHeight = 0;//实际被分配高度
+    this.isWidthUpdated = false; //是否被更新了宽度，视图layout时此标志被设为false，为false表示宽度的计算为actualWidth+border，为true表示宽度的计算为width
+    this.isHeightUpdated = false;//是否被更新了高度，视图layout时此标志被设为false，为false表示高度的计算为actualHeight+border，为true表示高度的计算为height
 
     this.__updateRowsOrCols("rows",function(caller){
         caller.arrangement = __Arrangement.ROW;
@@ -330,6 +338,10 @@ var __view = function(id){
     // 这是父视图根据定义信息计算过的
     this.layout = function(width,height){
         this.checkError();
+
+        //设置标志
+        this.isWidthUpdated = false;
+        this.isHeightUpdated = false;
 
         //存储当前视图的实际宽度和高度，不包括border
         this.actualWidth = width;
@@ -717,8 +729,6 @@ var __view = function(id){
     };
 };
 
-
-
 if(!__view.prototype.__updateRowsOrCols){
     __view.prototype.__updateRowsOrCols = function(key, callback){
         if(key && this instanceof __view){
@@ -735,6 +745,125 @@ if(!__view.prototype.__updateRowsOrCols){
     }
 };
 
+//dom元素隐藏事件，计算border宽度
+//当某个视图被删除时，其上方的行距或左方的列距将会消失
+function __hide_handleLayout(id){
+    var view = __GLOBAL_id2view[id];
+    if(view==undefined) return;
+
+    var p = view.parent;
+    var expandLength = 0;//待扩展的高度或宽度
+    if(p.arrangement == __Arrangement.ROW){
+        //算上实际高度和border
+        //expandLength是所删除视图的高度，加上border，加上上方行距
+        if(!view.isHeightUpdated)
+            expandLength += view.actualHeight + view.borderWidth['top'] + view.borderWidth['bottom'];
+        else
+            expandLength += view.height;
+        if(p.rowsSpace.length == 1){
+            expandLength += p.rowsSpace[0];
+        }else if(p.rowsSpace.length > 1){
+            expandLength += p.rowsSpace[view.index];
+            p.rowsSpace.splice(view.index,1);//第index个间隔将被去除
+        }
+        //最后修改，因为一旦更改了p.rows，则index会被更动
+        p.rows.splice(view.index,1);
+        p.rows = p.rows;//此步骤是为了更新index
+        var rn = p.rowsNum();
+        if(rn>0){
+            //proportionLength是除忽略的兄弟视图之外的所有兄弟视图的高度，加上border
+            //如果所有视图被忽略，proportionLength为0，则所有兄弟视图的高度不变
+            var proportionLength = 0;
+            for (var i = 0; i < rn; i++) {
+                if( view.missAdaptIgnore.length>0 &&
+                    view.missAdaptIgnore.indexOf(p.rows[i].id)>=0){
+                    continue;
+                }else{
+                    if(!p.rows[i].isHeightUpdated)
+                        proportionLength += p.rows[i].actualHeight + p.rows[i].borderWidth['top'] + p.rows[i].borderWidth['bottom'];
+                    else
+                        proportionLength += p.rows[i].height;
+                }
+            }
+            for (var i = 0; i < rn; i++) {
+                if(!p.rows[i].isHeightUpdated)
+                    p.rows[i].height = p.rows[i].actualHeight + p.rows[i].borderWidth['top'] + p.rows[i].borderWidth['bottom'];
+                //else
+                    //do nothing, because height(contains border) has been update
+                if( view.missAdaptIgnore.length>0 &&
+                    view.missAdaptIgnore.indexOf(p.rows[i].id)>=0){
+                    continue;
+                }else{
+                    p.rows[i].height += (p.rows[i].height/proportionLength)*expandLength;
+                    //set update flag
+                    p.rows[i].isHeightUpdated = true;
+                }
+            }
+        }else{
+            //递归检查
+            __hide_handleLayout(p.id);
+        }
+    }else{
+        //算上实际宽度和border
+        //expandLength是所删除视图的宽度，加上border，加上左方列距
+        if(!view.isWidthUpdated)
+            expandLength += view.actualWidth + view.borderWidth['left'] + view.borderWidth['right'];
+        else
+            expandLength += view.width;
+        if(p.colsSpace.length == 1){
+            expandLength += p.colsSpace[0];
+        }else if(p.colsSpace.length > 1){
+            expandLength += p.colsSpace[view.index];
+            p.colsSpace.splice(view.index,1);//第index个间隔将被去除
+        }
+        //最后修改，因为一旦更改了p.cols，则index会被更动
+        p.cols.splice(view.index,1);
+        p.cols = p.cols;//此步骤是为了更新index
+        var cn = p.colsNum();
+        if(cn>0){
+            //proportionLength是除忽略的兄弟视图之外的所有兄弟视图的宽度，加上border
+            //如果所有视图被忽略，proportionLength为0，则所有兄弟视图的宽度不变
+            var proportionLength = 0;
+            for (var i = 0; i < cn; i++) {
+                if( view.missAdaptIgnore.length>0 &&
+                    view.missAdaptIgnore.indexOf(p.cols[i].id)>=0){
+                    continue;
+                }else{
+                    if(!p.cols[i].isWidthUpdated)
+                        proportionLength += p.cols[i].actualWidth + p.cols[i].borderWidth['left'] + p.cols[i].borderWidth['right'];
+                    else
+                        proportionLength += p.cols[i].width;
+                }
+            }
+            for (var i = 0; i < cn; i++) {
+                if(!p.cols[i].isWidthUpdated)
+                    p.cols[i].width = p.cols[i].actualWidth + p.cols[i].borderWidth['left'] + p.cols[i].borderWidth['right'];
+                //else
+                    //do nothing, because width(contains border) has been update
+                if( view.missAdaptIgnore.length>0 &&
+                    view.missAdaptIgnore.indexOf(p.cols[i].id)>=0){
+                    continue;
+                }else{
+                    p.cols[i].width += (p.cols[i].width/proportionLength)*expandLength;
+                    //set update flag
+                    p.cols[i].isWidthUpdated = true;
+                }
+            }
+        }else{
+            //递归检查
+            __hide_handleLayout(p.id);
+        }
+    }
+}
+
+function __remove(id){
+    $('#'+id).remove();
+    __hide_handleLayout(id);
+}
+
+function __removeWithoutLayout(id){
+    $('#'+id).remove();
+}
 
 /*
  *****************************************************
@@ -1166,9 +1295,10 @@ __10.rowsSpace = [10];
 __10.colsSpace = [10];
 __7_8.rowsSpace = [2];
 
-__7.colsSpace = [10,20];
 __10_11.rowsSpace = [10,20,10]
 __6.missAdaptIgnore = ['c5']
+__7.width=380;
+__7_8.height=36;
 /*
 __7.rowsSpace = [10];
 __7.colsSpace = [10];
@@ -1181,7 +1311,6 @@ __10_11.colsSpace = [10];
 __right.colsSpace = [10];
 */
 __clayout.EVFL();
-
 
 //test 复杂视图2
 /*
@@ -1328,102 +1457,11 @@ function __deal_with_map_result__(data){
     }
 }
 
-
-//dom元素隐藏事件，计算border宽度
-//当某个视图被删除时，其上方的行距或左方的列距将会消失
-function __hide_handleLayout(id){
-    var view = __GLOBAL_id2view[id];
-    if(view==undefined) return;
-
-    var p = view.parent;
-    var expandLength = 0;//待扩展的高度或宽度
-    if(p.arrangement == __Arrangement.ROW){
-        //算上实际高度和border
-        //expandLength是所删除视图的高度，加上border，加上上方行距
-        expandLength += view.actualHeight + view.borderWidth['top'] + view.borderWidth['bottom'];
-        if(p.rowsSpace.length == 1){
-            expandLength += p.rowsSpace[0];
-        }else if(p.rowsSpace.length > 1){
-            expandLength += p.rowsSpace[view.index];
-            p.rowsSpace.splice(view.index,1);//第index个间隔将被去除
-        }
-        //最后修改，因为一旦更改了p.rows，则index会被更动
-        p.rows.splice(view.index,1);
-        p.rows = p.rows;//此步骤是为了更新index
-        var rn = p.rowsNum();
-        if(rn>0){
-            //proportionLength是除忽略的兄弟视图之外的所有兄弟视图的高度，加上border
-            //如果所有视图被忽略，proportionLength为0，则所有兄弟视图的高度不变
-            var proportionLength = 0;
-            for (var i = 0; i < rn; i++) {
-                if( view.missAdaptIgnore.length>0 &&
-                    view.missAdaptIgnore.indexOf(p.rows[i].id)>=0){
-                    continue;
-                }else{
-                    proportionLength += p.rows[i].actualHeight + p.rows[i].borderWidth['top'] + p.rows[i].borderWidth['bottom'];
-                }
-            }
-            for (var i = 0; i < rn; i++) {
-                p.rows[i].height = p.rows[i].actualHeight + p.rows[i].borderWidth['top'] + p.rows[i].borderWidth['bottom'];
-                if( view.missAdaptIgnore.length>0 &&
-                    view.missAdaptIgnore.indexOf(p.rows[i].id)>=0){
-                    continue;
-                }else{
-                    p.rows[i].height += ((p.rows[i].actualHeight+p.rows[i].borderWidth['top']+p.rows[i].borderWidth['bottom'])/proportionLength)*expandLength;
-                }
-            }
-        }else{
-            //递归检查
-            __hide_handleLayout(p.id);
-        }
-    }else{
-        //算上实际宽度和border
-        //expandLength是所删除视图的宽度，加上border，加上左方列距
-        expandLength += view.actualWidth + view.borderWidth['left'] + view.borderWidth['right'];
-        if(p.colsSpace.length == 1){
-            expandLength += p.colsSpace[0];
-        }else if(p.colsSpace.length > 1){
-            expandLength += p.colsSpace[view.index];
-            p.colsSpace.splice(view.index,1);//第index个间隔将被去除
-        }
-        //最后修改，因为一旦更改了p.cols，则index会被更动
-        p.cols.splice(view.index,1);
-        p.cols = p.cols;//此步骤是为了更新index
-        var cn = p.colsNum();
-        if(cn>0){
-            //proportionLength是除忽略的兄弟视图之外的所有兄弟视图的宽度，加上border
-            //如果所有视图被忽略，proportionLength为0，则所有兄弟视图的宽度不变
-            var proportionLength = 0;
-            for (var i = 0; i < cn; i++) {
-                if( view.missAdaptIgnore.length>0 &&
-                    view.missAdaptIgnore.indexOf(p.cols[i].id)>=0){
-                    continue;
-                }else{
-                    proportionLength += p.cols[i].actualWidth + p.cols[i].borderWidth['left'] + p.cols[i].borderWidth['right'];
-                }
-            }
-            for (var i = 0; i < cn; i++) {
-                p.cols[i].width = p.cols[i].actualWidth + p.cols[i].borderWidth['left'] + p.cols[i].borderWidth['right'];
-                if( view.missAdaptIgnore.length>0 &&
-                    view.missAdaptIgnore.indexOf(p.cols[i].id)>=0){
-                    continue;
-                }else{
-                    p.cols[i].width += ((p.cols[i].actualWidth+p.cols[i].borderWidth['left']+p.cols[i].borderWidth['right'])/proportionLength)*expandLength;
-                }
-            }
-        }else{
-            //递归检查
-            __hide_handleLayout(p.id);
-        }
-    }
-}
-
 window.onload = function(){
-    /*
-    $('#c6').remove();
-    __hide_handleLayout('c6');
+
+    __remove('c6');
     __clayout.EVFL();
-    */
+
 
     //首先获取所有映射值，用以发送请求判断是否显示界面元素
     var data = [
